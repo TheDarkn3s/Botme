@@ -11,7 +11,6 @@ from telegram.ext import Updater, CommandHandler, CallbackContext
 import gspread
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
-import pytz
 
 # Debug ENV
 print("🔍 ENV KEYS:", list(os.environ.keys()))
@@ -37,7 +36,7 @@ try:
     service_info = json.loads(creds_json)
     creds = Credentials.from_service_account_info(
         service_info,
-        scopes=["https://www.googleapis.com/auth/spreadsheets","https://www.googleapis.com/auth/drive"]
+        scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     )
     gc = gspread.authorize(creds)
     sh = gc.open_by_url(SPREADSHEET_URL)
@@ -91,7 +90,7 @@ def check_subscriptions(context: CallbackContext = None):
         ws_map = sh.worksheet(MAPPING_SHEET)
         df_map = pd.DataFrame(ws_map.get_all_records())
         df_map.columns = df_map.columns.str.strip().str.upper()
-        df_map.rename(columns={'NOMBRE EN TWITCH':'Username','NOMBRE EN TELEGRAM':'Telegram Username'}, inplace=True)
+        df_map.rename(columns={'NOMBRE EN TWITCH': 'Username', 'NOMBRE EN TELEGRAM': 'Telegram Username'}, inplace=True)
         df = pd.merge(df_twitch, df_map, on='Username', how='inner')
         if df.empty:
             print("⚠️ No matches found")
@@ -108,9 +107,9 @@ def check_subscriptions(context: CallbackContext = None):
         df_upload['Subscribe Date'] = df_upload['Subscribe Date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
         df_upload['Expire Date'] = df_upload['Expire Date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
         ws_data.update([df_upload.columns.tolist()] + df_upload.values.tolist())
-        print("✅ TwitchData actualizado")
+        print("✅ TwitchData sheet updated")
         # Send alerts
-        sent=0
+        sent = 0
         for _, row in df.iterrows():
             exp = datetime.fromisoformat(row['Expire Date'].replace('Z', '+00:00'))
             days_left = (exp - now).days
@@ -133,10 +132,10 @@ def check_subscriptions(context: CallbackContext = None):
 # Command handler
 
 def start(update: Update, context: CallbackContext):
-    update.message.reply_text("¡Hola! Bot activo. Revisaré suscripciones.")
+    update.message.reply_text("¡Hola! Bot activo. Revisaré suscripciones ahora.")
 
 # Setup bot
-updater = Updater(token=TOKEN)
+updater = Updater(token=TOKEN, use_context=True)
 updater.dispatcher.add_handler(CommandHandler('start', start))
 
 # Initial run
@@ -144,9 +143,14 @@ check_subscriptions()
 
 # Schedule daily job
 hh, mm = map(int, SCHEDULE_TIME.split(':'))
-job_time = dtime(hour=hh, minute=mm)
-updater.job_queue.run_daily(check_subscriptions, time=job_time, context=None, days=(0,1,2,3,4,5,6), timezone=pytz.UTC)
-print(f"⏰ Scheduled daily check at {SCHEDULE_TIME} UTC with pytz")
+job_time = dtime(hour=hh, minute=mm, tzinfo=timezone.utc)
+updater.job_queue.run_daily(
+    check_subscriptions,
+    time=job_time,
+    days=(0,1,2,3,4,5,6),
+    context=None
+)
+print(f"⏰ Scheduled daily check at {SCHEDULE_TIME} UTC")
 
 # Start polling
 print("🤖 Bot polling…")
