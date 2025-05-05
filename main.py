@@ -47,7 +47,7 @@ except KeyError as e:
     raise
 
 # Inicializar Bot de Telegram
-echo = Bot(token=TOKEN)
+bot = Bot(token=TOKEN)
 print("🤖 Bot de Telegram inicializado")
 
 # Autenticación con Google Sheets usando Base64
@@ -70,7 +70,6 @@ except Exception:
     raise
 
 CSV_PATH = 'subscriber-list.csv'
-
 
 def fetch_subscribers():
     print("🌐 Iniciando fetch_subscribers()")
@@ -112,7 +111,6 @@ def fetch_subscribers():
         print("❌ Error en fetch_subscribers():")
         traceback.print_exc()
         raise
-
 
 def check_subscriptions():
     print("▶️ Iniciando check_subscriptions()")
@@ -162,7 +160,12 @@ def check_subscriptions():
         print("✉️ Enviando alertas")
         sent = 0
         for _, row in df.iterrows():
-            exp = datetime.fromisoformat(row['Expire Date'])
+            exp_str = row['Expire Date']
+            # Manejar la 'Z' al final convirtiéndola en +00:00
+            try:
+                exp = datetime.fromisoformat(exp_str.replace('Z', '+00:00'))
+            except ValueError:
+                exp = datetime.fromisoformat(exp_str)
             days_left = (exp - now).days
             tg_user = row['Telegram Username']
             if days_left <= 0:
@@ -179,7 +182,6 @@ def check_subscriptions():
     except Exception:
         print("❌ Error en check_subscriptions():")
         traceback.print_exc()
-
 
 if __name__ == "__main__":
     print("🚀 Bot arrancando")
