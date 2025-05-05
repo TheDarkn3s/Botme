@@ -1,6 +1,6 @@
 import os
-import json
 import logging
+import json
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -12,6 +12,13 @@ import gspread
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 
+# — DEBUG ENVIRONMENT —
+logging.basicConfig(
+    format='%(asctime)s %(levelname)s: %(message)s',
+    level=logging.DEBUG
+)
+logging.debug("ENV KEYS: %r", list(os.environ.keys()))
+
 # — Carga de .env —
 load_dotenv()
 
@@ -19,7 +26,7 @@ load_dotenv()
 TOKEN       = os.environ['TELEGRAM_TOKEN']
 CHAT_ID     = os.environ['TELEGRAM_CHAT_ID']
 SPREADSHEET = os.environ['SPREADSHEET_URL']
-CSV_PATH    = 'subscriber-list.csv'  # se genera dinámicamente
+CSV_PATH    = 'subscriber-list.csv'
 MAPPING_SHEET    = os.getenv('MAPPING_SHEET_NAME', 'Mapping')
 TWITCHDATA_SHEET = os.getenv('TWITCHDATA_SHEET_NAME', 'TwitchData')
 SCHEDULE_TIME    = os.getenv('SCHEDULE_TIME', '00:00')
@@ -29,11 +36,8 @@ TWITCH_CLIENT_ID     = os.environ['TWITCH_CLIENT_ID']
 TWITCH_OAUTH_TOKEN   = os.environ['TWITCH_OAUTH_TOKEN']
 TWITCH_BROADCASTER_ID= os.environ['TWITCH_BROADCASTER_ID']
 
-# — Logger —
-logging.basicConfig(
-    format='%(asctime)s %(levelname)s: %(message)s',
-    level=logging.INFO
-)
+# — Logger (reconfig to INFO for rest) —
+logging.getLogger().setLevel(logging.INFO)
 
 # — Inicializar bot de Telegram —
 bot = Bot(token=TOKEN)
