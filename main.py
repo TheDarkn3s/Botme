@@ -80,7 +80,6 @@ def fetch_subscribers():
 
     rows = []
     for sub in all_data:
-        # Intentamos created_at o gifted_at, y si no existe usamos ahora
         date_str = sub.get('created_at') or sub.get('gifted_at')
         if not date_str:
             date_str = datetime.now(timezone.utc).isoformat()
@@ -118,10 +117,15 @@ def check_subscriptions():
             logging.warning("No hay coincidencias entre CSV y Mapping.")
             return
 
-        # 5) Calcular expiraciones y actualizar Google Sheets
+        # 5) Calcular expiraciones
         df['Expire Date'] = df['Subscribe Date'] + timedelta(days=30)
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
+        # 6) Convertir fechas a strings antes de enviar a Sheets
+        df['Subscribe Date'] = df['Subscribe Date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        df['Expire Date']   = df['Expire Date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+        # 7) Actualizar Google Sheets
         try:
             ws_data = sh.worksheet(TWITCHDATA_SHEET)
             ws_data.clear()
@@ -129,12 +133,13 @@ def check_subscriptions():
             ws_data = sh.add_worksheet(
                 title=TWITCHDATA_SHEET, rows="1000", cols="20"
             )
-        ws_data.update([df.columns.tolist()] + df.values.tolist())
+        ws_data.update([df.columns.tolist()] + df.astype(str).values.tolist())
         logging.info("Hoja TwitchData actualizada.")
 
-        # 6) Enviar alertas por Telegram
+        # 8) Enviar alertas por Telegram
         for _, row in df.iterrows():
-            days_left = (row['Expire Date'] - now).days
+            exp = datetime.fromisoformat(row['Expire Date'])
+            days_left = (exp - now).days
             tg_user  = row['Telegram Username']
 
             if days_left <= 0:
