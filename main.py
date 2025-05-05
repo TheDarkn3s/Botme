@@ -139,7 +139,8 @@ def check_subscriptions():
             return
 
         df['Expire Date'] = df['Subscribe Date'] + timedelta(days=30)
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        # Usar now con timezone aware
+        now = datetime.now(timezone.utc)
         print("⏳ Fechas de expiración calculadas")
 
         # Convertir fechas a string ISO
@@ -161,7 +162,6 @@ def check_subscriptions():
         sent = 0
         for _, row in df.iterrows():
             exp_str = row['Expire Date']
-            # Manejar la 'Z' al final convirtiéndola en +00:00
             try:
                 exp = datetime.fromisoformat(exp_str.replace('Z', '+00:00'))
             except ValueError:
