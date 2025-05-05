@@ -128,7 +128,11 @@ def check_subscriptions():
         }, inplace=True)
 
         print(f"🔍 Leyendo CSV '{CSV_PATH}'")
-        df_twitch = pd.read_csv(CSV_PATH)
+        try:
+            df_twitch = pd.read_csv(CSV_PATH)
+        except pd.errors.EmptyDataError:
+            print(f"⚠️ El CSV '{CSV_PATH}' está vacío o no tiene datos, abortando.")
+            return
         print(f"  🐼 CSV filas={len(df_twitch)}, cols={df_twitch.shape[1]}")
         df_twitch['Subscribe Date'] = pd.to_datetime(df_twitch['Subscribe Date'])
 
@@ -140,7 +144,6 @@ def check_subscriptions():
 
         # Calcular expiración
         df['Expire Date'] = df['Subscribe Date'] + timedelta(days=30)
-        # Ahora datetime aware
         now = datetime.now(timezone.utc)
         print("⏳ Fechas de expiración calculadas")
 
