@@ -19,24 +19,24 @@ logging.basicConfig(
 )
 logging.debug("ENV KEYS: %r", list(os.environ.keys()))
 
-# — Carga de .env —
+# — Carga de .env (solo si corres localmente) —
 load_dotenv()
 
 # — Variables de entorno —
-TOKEN       = os.environ['TELEGRAM_TOKEN']
-CHAT_ID     = os.environ['TELEGRAM_CHAT_ID']
-SPREADSHEET = os.environ['SPREADSHEET_URL']
-CSV_PATH    = 'subscriber-list.csv'
-MAPPING_SHEET    = os.getenv('MAPPING_SHEET_NAME', 'Mapping')
-TWITCHDATA_SHEET = os.getenv('TWITCHDATA_SHEET_NAME', 'TwitchData')
-SCHEDULE_TIME    = os.getenv('SCHEDULE_TIME', '00:00')
+TOKEN                = os.environ['TELEGRAM_TOKEN']
+CHAT_ID              = os.environ['TELEGRAM_CHAT_ID']
+SPREADSHEET          = os.environ['SPREADSHEET_URL']
+CSV_PATH             = 'subscriber-list.csv'
+MAPPING_SHEET        = os.getenv('MAPPING_SHEET_NAME', 'Mapping')
+TWITCHDATA_SHEET     = os.getenv('TWITCHDATA_SHEET_NAME', 'TwitchData')
+SCHEDULE_TIME        = os.getenv('SCHEDULE_TIME', '00:00')
 
 # Twitch API vars
 TWITCH_CLIENT_ID     = os.environ['TWITCH_CLIENT_ID']
 TWITCH_OAUTH_TOKEN   = os.environ['TWITCH_OAUTH_TOKEN']
 TWITCH_BROADCASTER_ID= os.environ['TWITCH_BROADCASTER_ID']
 
-# — Logger (reconfig to INFO for rest) —
+# — Reconfigura logger a INFO para resto de mensajes —
 logging.getLogger().setLevel(logging.INFO)
 
 # — Inicializar bot de Telegram —
@@ -78,18 +78,28 @@ def fetch_subscribers():
         else:
             break
 
-    df = pd.DataFrame([{
-        'Username': sub['user_name'],
-        'Subscribe Date': sub['created_at']
-    } for sub in all_data])
+    rows = []
+    for sub in all_data:
+        # Intentamos created_at o gifted_at, y si no existe usamos ahora
+        date_str = sub.get('created_at') or sub.get('gifted_at')
+        if not date_str:
+            date_str = datetime.now(timezone.utc).isoformat()
+        rows.append({
+            'Username': sub.get('user_name', ''),
+            'Subscribe Date': date_str
+        })
+
+    df = pd.DataFrame(rows)
     df.to_csv(CSV_PATH, index=False)
     logging.info(f"{len(df)} suscriptores escritos en {CSV_PATH}")
 
 def check_subscriptions():
     """Lee Mapping + CSV, procesa expiraciones y envía alertas."""
     try:
+        # 1) Generar CSV desde Twitch
         fetch_subscribers()
 
+        # 2) Leer Mapping desde Google Sheets
         ws_map = sh.worksheet(MAPPING_SHEET)
         df_map = pd.DataFrame(ws_map.get_all_records())
         df_map.columns = df_map.columns.str.strip().str.upper()
@@ -98,14 +108,17 @@ def check_subscriptions():
             'NOMBRE EN TELEGRAM': 'Telegram Username'
         }, inplace=True)
 
+        # 3) Leer CSV generado
         df_twitch = pd.read_csv(CSV_PATH)
         df_twitch['Subscribe Date'] = pd.to_datetime(df_twitch['Subscribe Date'])
 
+        # 4) Fusionar datos
         df = pd.merge(df_twitch, df_map, on='Username', how='inner')
         if df.empty:
             logging.warning("No hay coincidencias entre CSV y Mapping.")
             return
 
+        # 5) Calcular expiraciones y actualizar Google Sheets
         df['Expire Date'] = df['Subscribe Date'] + timedelta(days=30)
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -119,9 +132,10 @@ def check_subscriptions():
         ws_data.update([df.columns.tolist()] + df.values.tolist())
         logging.info("Hoja TwitchData actualizada.")
 
+        # 6) Enviar alertas por Telegram
         for _, row in df.iterrows():
             days_left = (row['Expire Date'] - now).days
-            tg_user = row['Telegram Username']
+            tg_user  = row['Telegram Username']
 
             if days_left <= 0:
                 text = f"❌ @{tg_user}, SUSCRIPCIÓN CADUCADA"
@@ -137,9 +151,14 @@ def check_subscriptions():
         logging.exception(f"Error en check_subscriptions: {e}")
 
 if __name__ == "__main__":
+    # Primera ejecución al arrancar
     check_subscriptions()
+
+    # Programación diaria (UTC)
     schedule.every().day.at(SCHEDULE_TIME).do(check_subscriptions)
     logging.info(f"Job diario programado a las {SCHEDULE_TIME} UTC")
+
+    # Loop para mantener vivo el worker
     while True:
         schedule.run_pending()
         time.sleep(30)
