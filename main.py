@@ -2,7 +2,7 @@ import os
 import json
 import base64
 import traceback
-from datetime import datetime, timedelta, timezone, time as dtime
+from datetime import datetime, timedelta, time as dtime
 
 import pandas as pd
 import requests
@@ -11,6 +11,7 @@ from telegram.ext import Updater, CommandHandler, CallbackContext
 import gspread
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
+import pytz
 
 # Debug ENV
 print("🔍 ENV KEYS:", list(os.environ.keys()))
@@ -69,7 +70,7 @@ def fetch_subscribers() -> pd.DataFrame:
             break
     rows = []
     for sub in all_data:
-        date_str = sub.get('created_at') or sub.get('gifted_at') or datetime.now(timezone.utc).isoformat()
+        date_str = sub.get('created_at') or sub.get('gifted_at') or datetime.now(pytz.UTC).isoformat()
         rows.append({'Username': sub.get('user_name', ''), 'Subscribe Date': date_str})
     df = pd.DataFrame(rows, columns=['Username', 'Subscribe Date'])
     df.to_csv(CSV_PATH, index=False)
@@ -96,7 +97,7 @@ def check_subscriptions(context: CallbackContext = None):
             print("⚠️ No matches found")
             return
         df['Expire Date'] = df['Subscribe Date'] + timedelta(days=30)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(pytz.UTC)
         # Update sheet
         try:
             ws_data = sh.worksheet(TWITCHDATA_SHEET)
@@ -107,7 +108,7 @@ def check_subscriptions(context: CallbackContext = None):
         df_upload['Subscribe Date'] = df_upload['Subscribe Date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
         df_upload['Expire Date'] = df_upload['Expire Date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
         ws_data.update([df_upload.columns.tolist()] + df_upload.values.tolist())
-        print("✅ TwitchData sheet updated")
+        print("✅ TwitchData actualizado")
         # Send alerts
         sent = 0
         for _, row in df.iterrows():
@@ -141,14 +142,13 @@ updater.dispatcher.add_handler(CommandHandler('start', start))
 # Initial run
 check_subscriptions()
 
-# Schedule daily job
+# Schedule daily job using pytz UTC timezone in time object
 hh, mm = map(int, SCHEDULE_TIME.split(':'))
-job_time = dtime(hour=hh, minute=mm, tzinfo=timezone.utc)
+job_time = dtime(hour=hh, minute=mm, tzinfo=pytz.UTC)
 updater.job_queue.run_daily(
     check_subscriptions,
     time=job_time,
-    days=(0,1,2,3,4,5,6),
-    context=None
+    days=(0,1,2,3,4,5,6)
 )
 print(f"⏰ Scheduled daily check at {SCHEDULE_TIME} UTC")
 
