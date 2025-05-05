@@ -1,0 +1,10 @@
+# Entorno y credenciales
+.env
+credenciales.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Logs
+*.log
