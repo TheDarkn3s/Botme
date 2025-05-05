@@ -138,14 +138,15 @@ def check_subscriptions():
             print("⚠️ No hay coincidencias entre CSV y Mapping.")
             return
 
+        # Calcular expiración
         df['Expire Date'] = df['Subscribe Date'] + timedelta(days=30)
-        # Usar now con timezone aware
+        # Ahora datetime aware
         now = datetime.now(timezone.utc)
         print("⏳ Fechas de expiración calculadas")
 
         # Convertir fechas a string ISO
         df['Subscribe Date'] = df['Subscribe Date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-        df['Expire Date']   = df['Expire Date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        df['Expire Date'] = df['Expire Date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
         print(f"🔄 Actualizando sheet '{TWITCHDATA_SHEET}'")
         try:
