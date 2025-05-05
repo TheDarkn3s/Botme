@@ -12,12 +12,12 @@ import gspread
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 
-# — Debug ENV —
+# Debug ENV
 print("🔍 ENV KEYS:", list(os.environ.keys()))
 load_dotenv()
 print("✅ .env cargado (si existe)")
 
-# Cargar env vars
+# Load env vars
 TOKEN = os.environ['TELEGRAM_TOKEN']
 CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
 SPREADSHEET_URL = os.environ['SPREADSHEET_URL']
@@ -48,6 +48,7 @@ except Exception:
 
 CSV_PATH = 'subscriber-list.csv'
 
+# Fetch subscribers and ensure CSV has headers even if empty
 def fetch_subscribers() -> pd.DataFrame:
     print("🌐 Fetching subscribers from Twitch…")
     url = 'https://api.twitch.tv/helix/subscriptions'
@@ -70,14 +71,22 @@ def fetch_subscribers() -> pd.DataFrame:
     for sub in all_data:
         date_str = sub.get('created_at') or sub.get('gifted_at') or datetime.now(timezone.utc).isoformat()
         rows.append({'Username': sub.get('user_name', ''), 'Subscribe Date': date_str})
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows, columns=['Username', 'Subscribe Date'])
     df.to_csv(CSV_PATH, index=False)
     print(f"✅ CSV escrito: {len(df)} filas")
     return df
 
+# Subscription check combines mapping and CSV data
 def check_subscriptions():
     print("▶️ Running subscription check…")
-    df_twitch = pd.read_csv(CSV_PATH)
+    # ensure CSV exists by fetching
+    fetch_subscribers()
+    # read csv safely
+    try:
+        df_twitch = pd.read_csv(CSV_PATH)
+    except pd.errors.EmptyDataError:
+        print("⚠️ CSV vacío, saltando check_subscriptions")
+        return
     df_twitch['Subscribe Date'] = pd.to_datetime(df_twitch['Subscribe Date'])
     ws_map = sh.worksheet(MAPPING_SHEET)
     df_map = pd.DataFrame(ws_map.get_all_records())
@@ -85,13 +94,12 @@ def check_subscriptions():
     df_map.rename(columns={'NOMBRE EN TWITCH':'Username','NOMBRE EN TELEGRAM':'Telegram Username'}, inplace=True)
     df = pd.merge(df_twitch, df_map, on='Username', how='inner')
     if df.empty:
-        print("⚠️ No matches found")
+        print("⚠️ No matches found between CSV and Mapping")
         return
+    # calculate expiration
     df['Expire Date'] = df['Subscribe Date'] + timedelta(days=30)
     now = datetime.now(timezone.utc)
-    df['Expire Date'] = df['Expire Date'].dt.tz_localize(timezone.utc)
-    # Update sheet
-    ws_data = None
+    # update sheet
     try:
         ws_data = sh.worksheet(TWITCHDATA_SHEET)
         ws_data.clear()
@@ -102,35 +110,35 @@ def check_subscriptions():
     df_upload['Expire Date'] = df_upload['Expire Date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
     ws_data.update([df_upload.columns.tolist()] + df_upload.values.tolist())
     print("✅ TwitchData sheet updated")
-    # Send messages
-    sent=0
+    # send alerts
+    sent = 0
     for _, row in df.iterrows():
-        exp = row['Expire Date']
+        exp_str = row['Expire Date']
+        exp = datetime.fromisoformat(exp_str.replace('Z', '+00:00'))
         days_left = (exp - now).days
         tg = row['Telegram Username']
-        if days_left<=0:
+        if days_left <= 0:
             msg = f"❌ @{tg}, SUSCRIPCIÓN CADUCADA"
-        elif days_left<=3:
+        elif days_left <= 3:
             msg = f"⚠️ @{tg}, VENCE EN {days_left} DÍAS"
         else:
             continue
         Bot(token=TOKEN).send_message(chat_id=CHAT_ID, text=msg)
         print(f"  Sent to @{tg}: {msg}")
-        sent+=1
-    if sent==0:
+        sent += 1
+    if sent == 0:
         print("ℹ️ No alerts sent")
 
-# Handlers
+# Bot handlers
 
 def start(update: Update, context: CallbackContext):
-    update.message.reply_text("¡Hola! Estoy activo. Ejecutando chequeo de suscripciones.")
+    update.message.reply_text("¡Hola! Bot activo. Revisaré las suscripciones ahora.")
 
-# Setup bot and jobs
-updater = Updater(token=TOKEN)
+# Setup bot
+updater = Updater(token=TOKEN, use_context=True)
 updater.dispatcher.add_handler(CommandHandler('start', start))
 
-# On startup fetch and check
-df = fetch_subscribers()
+# Initial fetch and check
 check_subscriptions()
 
 # Schedule daily job
